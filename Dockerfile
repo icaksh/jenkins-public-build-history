@@ -3,13 +3,14 @@ FROM golang:1.25 AS builder
 WORKDIR /src
 
 COPY go.mod go.sum ./
-COPY vendor ./vendor
+RUN go mod download
+
 COPY db ./db
 COPY jenkins ./jenkins
 COPY templates ./templates
 COPY main.go notifier.go ./
 
-RUN CGO_ENABLED=0 GOFLAGS=-mod=vendor go build -o /out/jenkis-history .
+RUN CGO_ENABLED=0 go build -o /out/jenkins-public-build-history .
 
 FROM debian:bookworm-slim
 
@@ -19,7 +20,7 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY --from=builder /out/jenkis-history /app/jenkis-history
+COPY --from=builder /out/jenkins-public-build-history /app/jenkins-public-build-history
 
 RUN mkdir -p /app/data
 
@@ -28,4 +29,4 @@ ENV DB_PATH=/app/data/data.db
 
 EXPOSE 3000
 
-CMD ["/app/jenkis-history"]
+CMD ["/app/jenkins-public-build-history"]
