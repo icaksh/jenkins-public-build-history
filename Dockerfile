@@ -21,6 +21,8 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /out/jenkins-public-build-history /app/jenkins-public-build-history
+COPY --from=builder /src/templates /app/templates
+
 
 RUN mkdir -p /app/data
 
