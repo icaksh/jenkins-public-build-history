@@ -1,0 +1,217 @@
+{{ define "jobs.html" }}
+{{ template "base.start" . }}
+{{ template "jobs.content" . }}
+{{ template "base.end" . }}
+{{ end }}
+
+{{ define "jobs.content" }}
+<nav class="mb-4 flex items-center gap-1 text-sm text-slate-500 flex-wrap">
+    <a href="/"
+       hx-get="/"
+       hx-target="#app-content"
+       hx-swap="innerHTML"
+       hx-push-url="false"
+       class="hover:text-blue-600 font-medium">Home</a>
+    {{ range .Breadcrumb }}
+    <i class="fa-solid fa-chevron-right text-xs text-slate-300"></i>
+    <a href="/"
+       hx-get="/?browse={{ .Path }}"
+       hx-target="#app-content"
+       hx-swap="innerHTML"
+       hx-push-url="false"
+       class="hover:text-blue-600">{{ .Name }}</a>
+    {{ end }}
+</nav>
+
+<div class="mb-6">
+    <div class="flex items-center justify-between gap-3">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800">
+                {{ if .FolderPath }}{{ .FolderPath }}{{ else }}All Jobs{{ end }}
+            </h1>
+            <p class="text-slate-500 text-sm mt-1">{{ len .Jobs }} item(s) tersedia pada scope akses saat ini.</p>
+        </div>
+        <span id="running-live-pill" class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide live-pill-offline">
+            <i class="fa-solid fa-circle mr-1 text-[8px]"></i>reconnecting
+        </span>
+    </div>
+</div>
+
+{{ template "user_hooks_panel" . }}
+
+{{ if .Error }}
+<div class="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 text-sm">
+    <i class="fa-solid fa-circle-xmark mr-2"></i>{{ .Error }}
+</div>
+{{ end }}
+
+{{ template "running_jobs" . }}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+{{ range .Jobs }}
+    {{ if .IsFolder }}
+    {{ $nextPath := "" }}
+    {{ if $.FolderPath }}{{ $nextPath = print $.FolderPath "/" .Name }}{{ else }}{{ $nextPath = .Name }}{{ end }}
+    <a href="/"
+       hx-get="/?browse={{ $nextPath }}"
+       hx-target="#app-content"
+       hx-swap="innerHTML"
+       hx-push-url="false"
+       class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow flex items-center gap-4 group">
+        <div class="text-2xl text-amber-400 shrink-0"><i class="fa-solid fa-folder"></i></div>
+        <div class="min-w-0">
+            <div class="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors truncate">{{ .Name }}</div>
+            <div class="text-xs text-slate-400 mt-0.5">Folder</div>
+        </div>
+        <i class="fa-solid fa-chevron-right text-slate-300 ml-auto group-hover:text-blue-400 transition-colors shrink-0"></i>
+    </a>
+    {{ else }}
+    {{ $jobPath := "" }}
+    {{ if $.FolderPath }}{{ $jobPath = print $.FolderPath "/" .Name }}{{ else }}{{ $jobPath = .Name }}{{ end }}
+    <a href="/"
+       hx-get="/?job={{ $jobPath }}"
+       hx-target="#app-content"
+       hx-swap="innerHTML"
+       hx-push-url="false"
+       class="bg-white rounded-xl shadow-sm p-4 hover:shadow-md transition-shadow flex items-center gap-4 group">
+        <div class="text-2xl shrink-0">
+            {{ if eq .Color "blue" }}<i class="fa-solid fa-circle-check text-green-500"></i>
+            {{ else if eq .Color "red" }}<i class="fa-solid fa-circle-xmark text-red-500"></i>
+            {{ else if eq .Color "yellow" }}<i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+            {{ else if eq .Color "grey" }}<i class="fa-solid fa-ban text-gray-400"></i>
+            {{ else if contains .Color "anime" }}<i class="fa-solid fa-spinner fa-spin text-blue-500"></i>
+            {{ else }}<i class="fa-solid fa-circle-question text-gray-300"></i>{{ end }}
+        </div>
+        <div class="min-w-0">
+            <div class="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors truncate">{{ .Name }}</div>
+            <div class="text-xs text-slate-400 mt-0.5">Pipeline</div>
+        </div>
+        <i class="fa-solid fa-chevron-right text-slate-300 ml-auto group-hover:text-blue-400 transition-colors shrink-0"></i>
+    </a>
+    {{ end }}
+{{ end }}
+</div>
+
+{{ if not .Jobs }}
+<div class="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-6 py-10 text-center text-sm text-slate-500 shadow-sm">
+    <i class="fa-solid fa-box-open mr-2 text-slate-300"></i>Tidak ada job atau folder yang tersedia pada path ini.
+</div>
+{{ end }}
+
+<div class="mt-6 text-right">
+    <form method="POST" action="/">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}" />
+        <input type="hidden" name="action" value="logout" />
+        <button type="submit" class="text-xs text-slate-500 hover:text-red-600 transition-colors">
+            <i class="fa-solid fa-right-from-bracket mr-1"></i>Ganti kode akses
+        </button>
+    </form>
+</div>
+{{ end }}
+
+{{ define "running_jobs" }}
+{{ template "running_jobs_section" . }}
+
+<script>
+(function () {
+    const current = document.getElementById('running-jobs');
+    if (!current) return;
+    window.closeLiveStreams && window.closeLiveStreams();
+    const browse = current.dataset.browsePath || '';
+    const knownPaths = new Set(Array.from(current.querySelectorAll('[data-running-path]')).map(function (el) {
+        return el.dataset.runningPath;
+    }));
+    const stream = new EventSource('/running-stream?browse=' + encodeURIComponent(browse));
+    window.runningJobsStream = stream;
+    window.setLiveBadge && window.setLiveBadge('running-live-pill', false);
+
+    stream.onopen = function () {
+        window.setLiveBadge && window.setLiveBadge('running-live-pill', true);
+    };
+
+    stream.addEventListener('running', function (event) {
+        try {
+            const payload = JSON.parse(event.data);
+            const live = document.getElementById('running-jobs');
+            if (!live || !payload.html) return;
+            const wrapper = document.createElement('div');
+            wrapper.innerHTML = payload.html.trim();
+            const next = wrapper.firstElementChild;
+            if (!next) return;
+            next.querySelectorAll('[data-running-path]').forEach(function (el) {
+                if (!knownPaths.has(el.dataset.runningPath)) {
+                    el.classList.add('running-card-new');
+                }
+            });
+            next.querySelectorAll('[data-running-path]').forEach(function (el) {
+                knownPaths.add(el.dataset.runningPath);
+            });
+            live.outerHTML = next.outerHTML;
+            const inserted = document.getElementById('running-jobs');
+            if (inserted && window.htmx) {
+                window.htmx.process(inserted);
+            }
+        } catch (_) {}
+    });
+
+    stream.addEventListener('error', function () {
+        window.setLiveBadge && window.setLiveBadge('running-live-pill', false);
+        stream.close();
+        if (window.runningJobsStream === stream) {
+            window.runningJobsStream = null;
+        }
+    });
+})();
+</script>
+{{ end }}
+
+{{ define "running_jobs_section" }}
+<section id="running-jobs" data-browse-path="{{ .FolderPath }}" class="mb-6">
+{{ if .RunningJobs }}
+    <div class="flex items-center justify-between gap-3 mb-3">
+        <div>
+            <h2 class="text-sm font-semibold text-slate-800">Running Builds</h2>
+            <p class="text-xs text-slate-500">Pipeline yang sedang proses saat ini.</p>
+        </div>
+        <span class="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+            {{ len .RunningJobs }} active
+        </span>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {{ range .RunningJobs }}
+        <a href="/"
+           hx-get="/?job={{ .FullPath }}"
+           hx-target="#app-content"
+           hx-swap="innerHTML"
+           hx-push-url="false"
+           data-running-path="{{ .FullPath }}"
+           class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 shadow-sm hover:shadow-md transition-shadow flex items-center gap-3 group">
+            <div class="text-blue-600 text-lg shrink-0">
+                <i class="fa-solid fa-spinner fa-spin"></i>
+            </div>
+            <div class="min-w-0">
+                <div class="font-semibold text-slate-800 truncate group-hover:text-blue-700 transition-colors">{{ .Name }}</div>
+                <div class="text-xs text-slate-500 truncate">{{ .FullPath }}</div>
+            </div>
+            <i class="fa-solid fa-arrow-up-right-from-square text-blue-300 ml-auto shrink-0 group-hover:text-blue-500 transition-colors"></i>
+        </a>
+        {{ end }}
+    </div>
+{{ else }}
+    <button type="button"
+            hx-get="/{{ if .FolderPath }}?browse={{ .FolderPath }}{{ end }}"
+            hx-target="#app-content"
+            hx-swap="innerHTML"
+            hx-push-url="false"
+            class="w-full rounded-2xl border border-dashed border-slate-300 bg-white/70 px-5 py-5 text-left text-sm text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50/70 hover:text-slate-700">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <div><i class="fa-solid fa-circle-pause mr-2 text-slate-300"></i>Tidak ada pipeline yang sedang running pada scope ini.</div>
+                <div class="mt-1 text-xs text-slate-400">Klik untuk refresh daftar job pada scope ini.</div>
+            </div>
+            <i class="fa-solid fa-rotate-right text-slate-300"></i>
+        </div>
+    </button>
+{{ end }}
+</section>
+{{ end }}

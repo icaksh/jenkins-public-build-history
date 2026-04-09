@@ -1,0 +1,210 @@
+{{ define "index.html" }}
+{{ template "base.start" . }}
+{{ template "index.content" . }}
+{{ template "base.end" . }}
+{{ end }}
+
+{{ define "index.content" }}
+<nav class="mb-4 flex items-center gap-1 text-sm text-slate-500 flex-wrap">
+    <a href="/"
+       hx-get="/"
+       hx-target="#app-content"
+       hx-swap="innerHTML"
+       hx-push-url="false"
+       class="hover:text-blue-600 font-medium">Home</a>
+    {{ range .Breadcrumb }}
+    <i class="fa-solid fa-chevron-right text-xs text-slate-300"></i>
+    {{ if eq .Path $.JobName }}
+    <span class="text-slate-700 font-medium">{{ .Name }}</span>
+    {{ else }}
+    <a href="/"
+       hx-get="/?browse={{ .Path }}"
+       hx-target="#app-content"
+       hx-swap="innerHTML"
+       hx-push-url="false"
+       class="hover:text-blue-600">{{ .Name }}</a>
+    {{ end }}
+    {{ end }}
+</nav>
+
+<div class="mb-6">
+    <div class="flex items-center justify-between gap-3">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800">{{ .JobName }}</h1>
+            <p class="text-slate-500 text-sm mt-1">Showing last {{ len .Builds }} builds dari pipeline ini.</p>
+        </div>
+        <span id="timeline-live-pill" class="inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide live-pill-offline">
+            <i class="fa-solid fa-circle mr-1 text-[8px]"></i>reconnecting
+        </span>
+    </div>
+</div>
+
+{{ template "user_hooks_panel" . }}
+
+{{ if .Error }}
+<div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6">
+    <i class="fa-solid fa-circle-xmark mr-2"></i>{{ .Error }}
+</div>
+{{ end }}
+
+<div id="log-panel" class="mb-8">
+    <div class="bg-white rounded-xl shadow-sm p-6 text-slate-400 text-sm text-center border-2 border-dashed border-slate-200">
+        <i class="fa-solid fa-diagram-project mr-2"></i>Click a build card below to view its stages
+    </div>
+</div>
+
+{{ template "build_timeline" . }}
+
+<div class="mt-6 text-right">
+    <form method="POST" action="/">
+        <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}" />
+        <input type="hidden" name="action" value="logout" />
+        <button type="submit" class="text-xs text-slate-500 hover:text-red-600 transition-colors">
+            <i class="fa-solid fa-right-from-bracket mr-1"></i>Ganti kode akses
+        </button>
+    </form>
+</div>
+{{ end }}
+
+{{ define "build_timeline" }}
+{{ template "build_timeline_section" . }}
+
+<script>
+(function () {
+    const current = document.getElementById('build-timeline');
+    if (!current) return;
+    window.closeLiveStreams && window.closeLiveStreams();
+    const jobName = current.dataset.jobName;
+    if (!jobName) return;
+
+    const stream = new EventSource('/job-stream/' + encodeURIComponent(jobName));
+    window.buildTimelineStream = stream;
+    window.setLiveBadge && window.setLiveBadge('timeline-live-pill', false);
+
+    stream.onopen = function () {
+        window.setLiveBadge && window.setLiveBadge('timeline-live-pill', true);
+    };
+
+    stream.addEventListener('timeline', function (event) {
+        try {
+            const payload = JSON.parse(event.data);
+            const live = document.getElementById('build-timeline');
+            if (!live || !payload.html) return;
+            live.outerHTML = payload.html;
+            const inserted = document.getElementById('build-timeline');
+            if (inserted && window.htmx) {
+                window.htmx.process(inserted);
+            }
+        } catch (_) {}
+    });
+
+    stream.addEventListener('error', function () {
+        window.setLiveBadge && window.setLiveBadge('timeline-live-pill', false);
+        stream.close();
+        if (window.buildTimelineStream === stream) {
+            window.buildTimelineStream = null;
+        }
+    });
+})();
+</script>
+{{ end }}
+
+{{ define "build_timeline_section" }}
+<section id="build-timeline" data-job-name="{{ .JobName }}">
+{{ if .Builds }}
+<div class="relative timeline-line">
+    {{ range $i, $build := .Builds }}
+    {{ $isRight := isEven $i }}
+
+    <div class="flex md:hidden items-start mb-6 pl-10 gap-3">
+        <div class="absolute left-0 z-10 flex items-center justify-center w-10 shrink-0">
+            <div class="status-{{ $build.StatusClass }} build-icon text-xl bg-white rounded-full p-1 shadow-sm">
+                <i class="fa-solid {{ $build.StatusIcon }}"></i>
+            </div>
+        </div>
+        <div class="w-full status-{{ $build.StatusClass }}">
+            <div class="build-card bg-white rounded-xl shadow-sm p-4 cursor-pointer active:shadow-md transition-shadow"
+                 hx-get="/log/{{ $.JobName }}/{{ $build.Number }}"
+                 hx-target="#log-panel"
+                 hx-swap="innerHTML"
+                 hx-push-url="false"
+                 onclick="document.getElementById('log-panel').scrollIntoView({behavior:'smooth', block:'start'})">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-bold text-slate-700">#{{ $build.Number }}</span>
+                    <span class="build-badge text-white text-xs px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+                        {{ if $build.Building }}running{{ else }}{{ $build.Result }}{{ end }}
+                    </span>
+                </div>
+                <div class="text-xs text-slate-500 space-y-1">
+                    <div><i class="fa-regular fa-clock mr-1"></i>{{ fmtBuildTime $build.Time }}</div>
+                    {{ if not $build.Building }}
+                    <div><i class="fa-solid fa-stopwatch mr-1"></i>{{ $build.DurationStr }}</div>
+                    {{ end }}
+                    {{ if $build.CommitID }}
+                    <div><i class="fa-solid fa-code-commit mr-1"></i>{{ $build.ShortCommit }}{{ if $build.BranchName }} · {{ $build.BranchName }}{{ end }}</div>
+                    {{ end }}
+                    {{ if $build.CommitMsg }}
+                    <div class="truncate"><i class="fa-regular fa-message mr-1"></i>{{ $build.CommitMsg }}</div>
+                    {{ end }}
+                    {{ if $build.CommitAuthor }}
+                    <div><i class="fa-regular fa-user mr-1"></i>{{ $build.CommitAuthor }}</div>
+                    {{ end }}
+                </div>
+                <div class="mt-3 text-xs text-blue-600 font-medium">
+                    <i class="fa-solid fa-diagram-project mr-1"></i>View Stages
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="hidden md:flex items-start mb-8 gap-4 {{ if $isRight }}flex-row-reverse{{ end }}">
+        <div class="w-[calc(50%-2rem)] status-{{ $build.StatusClass }}">
+            <div class="build-card bg-white rounded-xl shadow-sm p-4 cursor-pointer hover:shadow-md transition-shadow"
+                 hx-get="/log/{{ $.JobName }}/{{ $build.Number }}"
+                 hx-target="#log-panel"
+                 hx-swap="innerHTML"
+                 hx-push-url="false"
+                 onclick="document.getElementById('log-panel').scrollIntoView({behavior:'smooth', block:'start'})">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-bold text-slate-700">#{{ $build.Number }}</span>
+                    <span class="build-badge text-white text-xs px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide">
+                        {{ if $build.Building }}running{{ else }}{{ $build.Result }}{{ end }}
+                    </span>
+                </div>
+                <div class="text-xs text-slate-500 space-y-1">
+                    <div><i class="fa-regular fa-clock mr-1"></i>{{ fmtBuildTime $build.Time }}</div>
+                    {{ if not $build.Building }}
+                    <div><i class="fa-solid fa-stopwatch mr-1"></i>{{ $build.DurationStr }}</div>
+                    {{ end }}
+                    {{ if $build.CommitID }}
+                    <div><i class="fa-solid fa-code-commit mr-1"></i>{{ $build.ShortCommit }}{{ if $build.BranchName }} · {{ $build.BranchName }}{{ end }}</div>
+                    {{ end }}
+                    {{ if $build.CommitMsg }}
+                    <div class="truncate"><i class="fa-regular fa-message mr-1"></i>{{ $build.CommitMsg }}</div>
+                    {{ end }}
+                    {{ if $build.CommitAuthor }}
+                    <div><i class="fa-regular fa-user mr-1"></i>{{ $build.CommitAuthor }}</div>
+                    {{ end }}
+                </div>
+                <div class="mt-3 text-xs text-blue-600 font-medium">
+                    <i class="fa-solid fa-diagram-project mr-1"></i>View Stages
+                </div>
+            </div>
+        </div>
+        <div class="relative z-10 flex items-center justify-center w-16 shrink-0">
+            <div class="status-{{ $build.StatusClass }} build-icon text-2xl bg-white rounded-full p-1 shadow-sm">
+                <i class="fa-solid {{ $build.StatusIcon }}"></i>
+            </div>
+        </div>
+        <div class="w-[calc(50%-2rem)]"></div>
+    </div>
+
+    {{ end }}
+</div>
+{{ else }}
+<div class="rounded-2xl border border-dashed border-slate-300 bg-white/80 px-6 py-10 text-center text-sm text-slate-500 shadow-sm">
+    <i class="fa-solid fa-clock-rotate-left mr-2 text-slate-300"></i>Belum ada build history yang bisa ditampilkan untuk pipeline ini.
+</div>
+{{ end }}
+</section>
+{{ end }}

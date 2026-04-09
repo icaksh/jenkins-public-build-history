@@ -1,0 +1,53 @@
+{{ define "access.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    <title>{{ .AppName }} — Enter Access Code</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous"/>
+</head>
+<body class="min-h-screen bg-[radial-gradient(circle_at_top,_#1d4ed8_0%,_#0f172a_55%,_#020617_100%)] flex flex-col items-center justify-center px-4 py-10">
+
+    <div class="w-full max-w-sm rounded-[28px] border border-white/10 bg-white/8 p-8 shadow-2xl shadow-slate-950/30 backdrop-blur">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-400/15 mb-4 ring-1 ring-white/10 overflow-hidden">
+                {{ if .AppLogoURL }}
+                <img src="{{ .AppLogoURL }}" alt="{{ .AppName }}" class="h-10 w-10 object-contain" />
+                {{ else }}
+                <i class="{{ .AppIcon }} text-cyan-200 text-2xl"></i>
+                {{ end }}
+            </div>
+            <h1 class="text-white text-2xl font-bold">{{ .AppName }}</h1>
+            <p class="text-slate-300 text-sm mt-1">{{ .AppDescription }}</p>
+        </div>
+
+        {{ if .Error }}
+        <div class="bg-red-500/20 border border-red-400/30 text-red-300 rounded-xl px-4 py-3 mb-4 text-sm text-center">
+            <i class="fa-solid fa-circle-xmark mr-2"></i>{{ .Error }}
+        </div>
+        {{ end }}
+
+        <form method="POST" action="/" class="space-y-3">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}" />
+            <input
+                type="text"
+                name="code"
+                placeholder="Contoh: ivf2024"
+                autocomplete="off"
+                autofocus
+                required
+                class="w-full bg-white/10 border border-white/15 text-white placeholder-slate-400 rounded-xl px-4 py-3 text-center text-lg tracking-[0.2em] focus:outline-none focus:ring-2 focus:ring-cyan-300 focus:border-transparent"
+            />
+            <button type="submit"
+                class="w-full bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-semibold py-3 rounded-xl transition-colors">
+                <i class="fa-solid fa-arrow-right mr-2"></i>Masuk
+            </button>
+        </form>
+    </div>
+
+</body>
+</html>
+{{ end }}

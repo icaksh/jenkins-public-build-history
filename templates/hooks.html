@@ -1,0 +1,254 @@
+{{ define "user_hooks_panel" }}
+<details class="mb-6 rounded-2xl border border-emerald-200 bg-white shadow-sm">
+    <summary class="cursor-pointer list-none px-5 py-4">
+        <div class="flex items-center justify-between gap-3">
+            <div>
+                <h2 class="text-sm font-semibold text-slate-800">Hook Saya</h2>
+                <p class="text-xs text-slate-500">Tambahkan Telegram bot token + chat ID atau webhook URL milikmu sendiri. Secret disimpan terenkripsi dan nilai sensitif ditampilkan dalam bentuk mask.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <span data-hook-count class="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                    {{ len .Hooks }} hook
+                </span>
+                <span class="text-slate-300 text-xs"><i class="fa-solid fa-chevron-down"></i></span>
+            </div>
+        </div>
+    </summary>
+
+    <div class="border-t border-emerald-100 px-5 py-4">
+        <div id="user-hooks" class="space-y-2 mb-4">
+            {{ range .Hooks }}
+            {{ template "user_hook_row" . }}
+            {{ else }}
+            {{ template "user_hook_empty" . }}
+            {{ end }}
+        </div>
+
+        <form hx-post="/hooks"
+              hx-target="#user-hooks"
+              hx-swap="beforeend"
+              hx-on::before-request="this.querySelector('[data-hook-error]').textContent=''"
+              hx-on::after-request="if(event.detail.successful){this.reset(); toggleHookFields(this)}; syncHookPanel()"
+              hx-on::response-error="this.querySelector('[data-hook-error]').textContent = event.detail.xhr.responseText"
+              class="space-y-2">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}" />
+            <div class="flex flex-col sm:flex-row gap-2">
+                <select name="type"
+                    onchange="toggleHookFields(this.form)"
+                    class="border border-slate-200 bg-white rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-400">
+                    <option value="telegram">Telegram</option>
+                    <option value="webhook">Webhook</option>
+                </select>
+                <div data-hook-webhook class="flex-1">
+                    <input name="value" placeholder="https://example.com/hooks/jenkins" required
+                        class="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
+                </div>
+            </div>
+            <div data-hook-telegram class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input type="password" name="bot_token" placeholder="1234567890:AAExampleBotToken"
+                    class="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
+                <input name="chat_id" placeholder="-1001234567890"
+                    class="border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"/>
+            </div>
+            <button type="submit"
+                class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap">
+                <i class="fa-solid fa-plus mr-1"></i>Tambah Hook
+            </button>
+            <p data-hook-error class="text-xs text-red-600"></p>
+        </form>
+
+        <div id="hook-logs-panel" class="mt-5">
+            {{ template "user_hook_logs" . }}
+        </div>
+    </div>
+</details>
+
+<script>
+function toggleHookFields(form) {
+    if (!form) return;
+    const type = form.querySelector('select[name="type"]')?.value || 'telegram';
+    const telegram = form.querySelector('[data-hook-telegram]');
+    const webhook = form.querySelector('[data-hook-webhook]');
+    const value = form.querySelector('input[name="value"]');
+    const botToken = form.querySelector('input[name="bot_token"]');
+    const chatId = form.querySelector('input[name="chat_id"]');
+
+    const isTelegram = type === 'telegram';
+    if (telegram) telegram.style.display = isTelegram ? 'grid' : 'none';
+    if (webhook) webhook.style.display = isTelegram ? 'none' : 'block';
+    if (value) value.required = !isTelegram;
+    if (botToken) botToken.required = isTelegram;
+    if (chatId) chatId.required = isTelegram;
+}
+
+function syncHookPanel() {
+    const container = document.getElementById('user-hooks');
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll('[data-hook-row]'));
+    const badge = document.querySelector('[data-hook-count]');
+    if (badge) {
+        badge.textContent = rows.length + ' hook';
+    }
+
+    const empties = Array.from(container.querySelectorAll('[data-hook-empty]'));
+    if (rows.length === 0) {
+        if (empties.length === 0) {
+            container.insertAdjacentHTML('beforeend', document.getElementById('user-hook-empty-template').innerHTML);
+        }
+    } else {
+        empties.forEach(function (node) { node.remove(); });
+    }
+}
+
+(function () {
+    function bindHookLogsDetails() {
+        const logsDetails = document.getElementById('hook-logs-details');
+        if (!logsDetails || logsDetails.dataset.bound === 'true') {
+            return;
+        }
+        logsDetails.dataset.bound = 'true';
+        logsDetails.addEventListener('toggle', function () {
+            if (logsDetails.open) {
+                initHookLogsStream();
+            } else {
+                closeHookLogsStream();
+            }
+        });
+    }
+
+    function closeHookLogsStream() {
+        if (window.hookLogsStream) {
+            window.hookLogsStream.close();
+            window.hookLogsStream = null;
+        }
+    }
+
+    function initHookLogsStream() {
+        const logsDetails = document.getElementById('hook-logs-details');
+        const logsPanel = document.getElementById('hook-logs-panel');
+        if (!logsDetails || !logsPanel || !logsDetails.open) {
+            closeHookLogsStream();
+            return;
+        }
+        if (window.hookLogsStream) {
+            return;
+        }
+        const stream = new EventSource('/hooks/logs-stream');
+        window.hookLogsStream = stream;
+        stream.addEventListener('logs', function (event) {
+            try {
+                const payload = JSON.parse(event.data);
+                const currentDetails = document.getElementById('hook-logs-details');
+                const wasOpen = currentDetails ? currentDetails.open : false;
+                const panel = document.getElementById('hook-logs-panel');
+                if (panel && payload.html) {
+                    panel.innerHTML = payload.html;
+                    const nextDetails = document.getElementById('hook-logs-details');
+                    if (nextDetails && wasOpen) {
+                        nextDetails.open = true;
+                    }
+                    bindHookLogsDetails();
+                }
+            } catch (_) {}
+        });
+        stream.addEventListener('open', function () {
+            window.setLiveBadge && window.setLiveBadge('hook-logs-live-pill', true);
+        });
+        stream.addEventListener('error', function () {
+            window.setLiveBadge && window.setLiveBadge('hook-logs-live-pill', false);
+        });
+    }
+
+    document.querySelectorAll('form[hx-post="/hooks"]').forEach(toggleHookFields);
+    bindHookLogsDetails();
+    document.body.addEventListener('htmx:afterSwap', function (event) {
+        if (!event.target) return;
+        if (event.target.id === 'user-hooks' || event.target.id === 'app-content') {
+            syncHookPanel();
+            bindHookLogsDetails();
+            initHookLogsStream();
+        }
+    });
+    document.body.addEventListener('htmx:afterRequest', function (event) {
+        const path = event.detail && event.detail.requestConfig && event.detail.requestConfig.path;
+        if (typeof path === 'string' && path.startsWith('/hooks/')) {
+            syncHookPanel();
+        }
+    });
+    syncHookPanel();
+    initHookLogsStream();
+})();
+</script>
+{{ end }}
+
+{{ define "user_hook_logs" }}
+<details id="hook-logs-details" class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+    <summary class="cursor-pointer list-none">
+        <div class="flex items-center justify-between gap-3">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">Delivery Logs</h3>
+            <div class="flex items-center gap-2">
+                <span id="hook-logs-live-pill" class="live-pill-online inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                    <i class="fa-solid fa-circle mr-1 text-[8px]"></i>live
+                </span>
+                <span class="text-[11px] text-slate-400">10 terbaru</span>
+                <span class="text-slate-300 text-xs"><i class="fa-solid fa-chevron-down"></i></span>
+            </div>
+        </div>
+    </summary>
+    <div class="space-y-2 pt-3">
+                {{ range .HookLogs }}
+                <div class="rounded-lg bg-white px-3 py-2 text-xs shadow-sm">
+                    <div class="flex items-center justify-between gap-3">
+                        <div class="font-semibold text-slate-700">{{ .HookType }} · {{ .Event }}</div>
+                        <div class="{{ if eq .Status "sent" }}text-emerald-600{{ else }}text-red-600{{ end }}">{{ .Status }}</div>
+                    </div>
+                    <div class="mt-1 text-slate-500">{{ .JobPath }}</div>
+                    <div class="mt-1 text-slate-600">{{ .Message }}</div>
+                    <div class="mt-1 text-[11px] text-slate-400">{{ fmtDateTime .CreatedAt }}</div>
+                </div>
+                {{ else }}
+        <p class="text-xs text-slate-400 italic">Belum ada log delivery.</p>
+        {{ end }}
+    </div>
+</details>
+{{ end }}
+
+{{ define "user_hook_row" }}
+<div id="user-hook-{{ .ID }}" data-hook-row class="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2">
+    <div class="min-w-0 pr-3">
+        <div class="text-[10px] font-semibold uppercase tracking-wide text-emerald-600">{{ .Type }}</div>
+        <code class="text-xs text-emerald-800 font-mono break-all">{{ .DisplayValue }}</code>
+        <div id="user-hook-test-{{ .ID }}" class="mt-1"></div>
+    </div>
+    <div class="ml-3 flex items-center gap-2 shrink-0">
+        <button
+            hx-post="/hooks/{{ .ID }}/test"
+            hx-target="#user-hook-test-{{ .ID }}"
+            hx-swap="innerHTML"
+            class="rounded-md border border-emerald-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100">
+            <i class="fa-solid fa-vial-circle-check mr-1"></i>Test
+        </button>
+        <button
+            hx-delete="/hooks/{{ .ID }}"
+            hx-target="#user-hook-{{ .ID }}"
+            hx-swap="outerHTML"
+            class="text-emerald-300 hover:text-red-500 transition-colors text-xs">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+</div>
+{{ end }}
+
+{{ define "user_hook_empty" }}
+<p data-hook-empty class="text-xs text-slate-400 italic">Belum ada hook. Tambahkan di bawah.</p>
+{{ end }}
+
+{{ define "user_hook_test_result" }}
+<div class="text-[11px] {{ if .Success }}text-emerald-700{{ else }}text-red-600{{ end }}">
+    <i class="fa-solid {{ if .Success }}fa-circle-check{{ else }}fa-circle-xmark{{ end }} mr-1"></i>{{ .Message }}
+</div>
+{{ end }}
+
+<template id="user-hook-empty-template">
+    {{ template "user_hook_empty" . }}
+</template>

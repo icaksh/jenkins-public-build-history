@@ -1,0 +1,152 @@
+{{ define "base.start" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    <title>{{ .AppName }}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.6"
+        integrity="sha384-FhXw7b6AlE/jyjlZH5iHa/tTe9EpJ1Y55RjcgPbjeWMskSxZt1v9qkxLJWNJaGni"
+        crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        .status-success  { --color: #16a34a; }
+        .status-failure  { --color: #dc2626; }
+        .status-unstable { --color: #d97706; }
+        .status-aborted  { --color: #6b7280; }
+        .status-building { --color: #2563eb; }
+        .status-unknown  { --color: #9ca3af; }
+
+        .build-card { border-left: 4px solid var(--color); }
+        .build-icon { color: var(--color); }
+        .build-badge { background-color: var(--color); }
+
+        /* Mobile: left-aligned single-column timeline */
+        .timeline-line::before {
+            content: '';
+            position: absolute;
+            left: 1.25rem;
+            top: 0; bottom: 0;
+            width: 2px;
+            background: #e5e7eb;
+        }
+
+        /* Desktop: center zig-zag timeline */
+        @media (min-width: 768px) {
+            .timeline-line::before {
+                left: 50%;
+                transform: translateX(-50%);
+            }
+        }
+
+        .log-viewer {
+            font-family: 'Courier New', monospace;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        @keyframes running-card-enter {
+            0% {
+                transform: translateY(6px);
+                box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+                background-color: rgb(239 246 255);
+            }
+            40% {
+                box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.12);
+                background-color: rgb(219 234 254);
+            }
+            100% {
+                transform: translateY(0);
+                box-shadow: 0 0 0 rgba(59, 130, 246, 0);
+                background-color: rgb(239 246 255);
+            }
+        }
+
+        .running-card-new {
+            animation: running-card-enter 1s ease-out;
+        }
+
+        .live-pill-offline {
+            background-color: rgb(241 245 249);
+            color: rgb(100 116 139);
+            border-color: rgb(226 232 240);
+        }
+
+        .live-pill-online {
+            background-color: rgb(236 253 245);
+            color: rgb(22 101 52);
+            border-color: rgb(134 239 172);
+        }
+    </style>
+    <script>
+        window.setLiveBadge = function (id, online) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.classList.remove('live-pill-offline', 'live-pill-online');
+            el.classList.add(online ? 'live-pill-online' : 'live-pill-offline');
+            el.innerHTML = online
+                ? '<i class="fa-solid fa-circle mr-1 text-[8px]"></i>live'
+                : '<i class="fa-solid fa-circle mr-1 text-[8px]"></i>reconnecting';
+        };
+
+        window.closeLiveStreams = function () {
+            if (window.buildTimelineStream) {
+                window.buildTimelineStream.close();
+                window.buildTimelineStream = null;
+            }
+            if (window.runningJobsStream) {
+                window.runningJobsStream.close();
+                window.runningJobsStream = null;
+            }
+            if (window.hookLogsStream) {
+                window.hookLogsStream.close();
+                window.hookLogsStream = null;
+            }
+        };
+
+        document.addEventListener('htmx:beforeSwap', function (event) {
+            if (event.target && event.target.id === 'app-content') {
+                window.closeLiveStreams();
+            }
+        });
+
+        document.addEventListener('htmx:configRequest', function (event) {
+            const token = document.querySelector('meta[name="csrf-token"]')?.content;
+            if (token) {
+                event.detail.headers['X-CSRF-Token'] = token;
+            }
+        });
+    </script>
+</head>
+<body class="min-h-screen bg-[linear-gradient(180deg,_#eff6ff_0%,_#f8fafc_24%,_#e2e8f0_100%)] text-slate-900">
+    <header class="border-b border-slate-200/80 bg-slate-950/95 text-white shadow-lg backdrop-blur">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex items-center gap-3">
+            <div class="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-400/10 ring-1 ring-white/10 overflow-hidden">
+                {{ if .AppLogoURL }}
+                <img src="{{ .AppLogoURL }}" alt="{{ .AppName }}" class="h-8 w-8 object-contain" />
+                {{ else }}
+                <i class="{{ .AppIcon }} text-cyan-300 text-xl"></i>
+                {{ end }}
+            </div>
+            <div>
+                <span class="block font-bold text-lg tracking-wide">{{ .AppName }}</span>
+                <span class="block text-xs text-slate-400">{{ .AppDescription }}</span>
+            </div>
+            <span class="ml-auto rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-cyan-200 hidden sm:inline">read-only</span>
+        </div>
+    </header>
+    <main id="app-content" class="max-w-5xl mx-auto px-4 py-8">
+{{ end }}
+
+{{ define "base.end" }}
+    </main>
+</body>
+</html>
+{{ end }}

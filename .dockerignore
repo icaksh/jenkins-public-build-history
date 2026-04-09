@@ -1,0 +1,10 @@
+.git
+.gitignore
+.claude
+bin
+data
+data.db
+data.db-shm
+data.db-wal
+node_modules
+*.log

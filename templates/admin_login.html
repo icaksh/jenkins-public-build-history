@@ -1,0 +1,44 @@
+{{ define "admin_login.html" }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    <title>Admin Login — {{ .AppName }}</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous"/>
+</head>
+<body class="min-h-screen bg-[radial-gradient(circle_at_top,_#334155_0%,_#0f172a_55%,_#020617_100%)] flex items-center justify-center px-4 py-10">
+    <div class="w-full max-w-xs rounded-[24px] border border-white/10 bg-slate-900/70 p-8 shadow-2xl shadow-slate-950/30 backdrop-blur">
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-slate-700/80 mb-4 ring-1 ring-white/10 overflow-hidden">
+                {{ if .AppLogoURL }}
+                <img src="{{ .AppLogoURL }}" alt="{{ .AppName }}" class="h-9 w-9 object-contain" />
+                {{ else }}
+                <i class="{{ .AppIcon }} text-sky-300 text-xl"></i>
+                {{ end }}
+            </div>
+            <h1 class="text-white text-xl font-bold">{{ .AppName }}</h1>
+            <p class="mt-1 text-sm text-slate-400">Masuk admin untuk mengelola access code, path, dan audit log.</p>
+        </div>
+
+        {{ if .Error }}
+        <div class="bg-red-500/20 border border-red-500/30 text-red-300 rounded-xl px-4 py-3 mb-4 text-sm text-center">
+            <i class="fa-solid fa-circle-xmark mr-2"></i>{{ .Error }}
+        </div>
+        {{ end }}
+
+        <form method="POST" action="/admin/login" class="space-y-3">
+            <input type="hidden" name="csrf_token" value="{{ .CSRFToken }}" />
+            <input type="password" name="password" placeholder="Masukkan password admin" autofocus required
+                class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"/>
+            <button type="submit"
+                class="w-full bg-blue-600 hover:bg-blue-500 text-white font-semibold py-3 rounded-xl transition-colors">
+                Login
+            </button>
+        </form>
+    </div>
+</body>
+</html>
+{{ end }}
