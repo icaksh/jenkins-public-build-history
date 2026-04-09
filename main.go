@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -24,6 +25,17 @@ import (
 )
 
 var tmpl *template.Template
+
+func templateGlobPath() string {
+	if matches, _ := filepath.Glob("templates/*.html"); len(matches) > 0 {
+		return "templates/*.html"
+	}
+	exePath, err := os.Executable()
+	if err != nil {
+		return "templates/*.html"
+	}
+	return filepath.Join(filepath.Dir(exePath), "templates", "*.html")
+}
 
 // ── Admin session (signed cookie) ─────────────────────────────────────────
 
@@ -393,7 +405,7 @@ func main() {
 		},
 	}
 	tmpl = template.Must(
-		template.New("").Funcs(funcMap).ParseGlob("templates/*.html"),
+		template.New("").Funcs(funcMap).ParseGlob(templateGlobPath()),
 	)
 
 	client := jenkins.New(
