@@ -6,7 +6,6 @@ COPY go.mod go.sum ./
 COPY vendor ./vendor
 COPY db ./db
 COPY jenkins ./jenkins
-COPY static ./static
 COPY templates ./templates
 COPY main.go notifier.go ./
 
