@@ -1,9 +1,7 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: jenkis-history
+    image: ghcr.io/icaksh/jenkins-public-build-history:latest
+    container_name: jenkins-public-build-history
     restart: unless-stopped
     env_file:
       - .env
